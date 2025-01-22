@@ -2,7 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import { Menu, Users } from "lucide-react";
 import { ChatContext } from "../context/ChatContext";
 import { AuthContext } from "../context/AuthContext";
-import SidebarSkeleton from "./Skeletons/SidebarSkeleton";
+import SidebarSkeleton from "./skeletons/SidebarSkeleton";
 import SearchModal from "./SearchModal";
 
 export default function Sidebar() {

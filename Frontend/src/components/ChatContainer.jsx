@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
-import MessageSkeleton from "./Skeletons/MessageSkeleton";
+import MessageSkeleton from "./skeletons/MessageSkeleton";
 import { formatMessageTime } from "../lib/utils";
 import { ChatContext } from "../context/ChatContext";
 import { AuthContext } from "../context/AuthContext";

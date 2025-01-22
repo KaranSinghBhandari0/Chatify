@@ -1,7 +1,6 @@
 import axios from "axios";
 
 export const axiosInstance = axios.create({
-    baseURL: "https://chatify-b3y1.onrender.com",
-    // baseURL: "http://localhost:3000",
+    baseURL: "https://chatify-65ur.onrender.com",
     withCredentials: true,
 });
