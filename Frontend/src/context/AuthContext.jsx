@@ -11,7 +11,7 @@ import { setDoc, doc, getDoc, query, where, getDocs, collection } from "firebase
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-    const BASE_URL = import.meta.env.VITE_API_URL;
+    const BASE_URL = import.meta.env.VITE_API_URL || "https://chatify-65ur.onrender.com";
     const navigate = useNavigate();
 
     const [user, setUser] = useState(null);
@@ -23,6 +23,11 @@ export const AuthProvider = ({ children }) => {
     const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
 
     const [socket, setSocket] = useState(null);
+
+    // activating Backend
+    useEffect(()=> {
+        axios.get('https://chatify-65ur.onrender.com')
+    }, [])
 
     // check authentication
     useEffect(() => {
