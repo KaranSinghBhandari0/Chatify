@@ -1,12 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const {isAuthenticated} = require('../middlewares/auth');
-const { getUsers, sendMessage, getMessages, clearChat, searchUser, } = require("../controllers/message");
+const { sendMessage, getMessages, clearChat } = require("../controllers/message");
 
-router.get("/users", getUsers);
-router.post("/send/:id", isAuthenticated, sendMessage);
-router.get("/:id", isAuthenticated, getMessages);
-router.get("/clearChat/:receiverId", isAuthenticated, clearChat);
-router.post("/searchUser/", searchUser);
+router.post("/send/:id", sendMessage);
+router.post("/:id", getMessages);
+router.post("/clearChat/:receiverId", clearChat);
 
 module.exports = router;

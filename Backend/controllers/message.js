@@ -1,28 +1,14 @@
-const User = require("../models/user.js");
 const Message = require("../models/message.js");
-const {cloudinary} = require("../cloudConfig.js");
-const { getReceiverSocketId, io } = require('../socket.js');
-const mongoose = require('mongoose');
-
-// finding all users
-const getUsers = async (req, res) => {
-    try {
-        const allUsers = await User.find().select("-password");
-
-        res.status(200).json(allUsers);
-    } catch (error) {
-        console.error("Error in finding Users: ", error.message);
-        res.status(500).json({ error: "Internal server error" });
-    }
-};
+const {cloudinary} = require("../lib/cloudinary.js");
+const { getReceiverSocketId, io } = require('../lib/socket.js');
 
 // sending message
 const sendMessage = async (req, res) => {
     try {
-        const { text, image } = req.body;
+        const { text, image } = req.body[0];
         const { id } = req.params;
         const receiverId = id;
-        const senderId = req.user._id;
+        const senderId = req.body[1];
 
         let imageUrl;
         if(image) {
@@ -55,7 +41,7 @@ const sendMessage = async (req, res) => {
 const getMessages = async (req, res) => {
     try {
         const { id: userToChatId } = req.params;
-        const myId = req.user._id;
+        const myId = req.body.userId;
 
         // all messages where i am sender or receiver
         const messages = await Message.find({
@@ -76,24 +62,21 @@ const getMessages = async (req, res) => {
 const clearChat = async (req, res) => {
     try {
         const { receiverId } = req.params;
-        const currUser = req.user;
+        const user = req.body;
 
-        if (!currUser || !currUser._id) {
+        if(!user) {
             return res.status(400).json({ error: "Current user is not authenticated." });
         }
 
-        if (!receiverId) {
+        if(!receiverId) {
             return res.status(400).json({ error: "Receiver ID is missing." });
         }
-
-        // Convert receiverId to ObjectId
-        const receiverObjectId = new mongoose.Types.ObjectId(receiverId);
 
         // Delete chat messages between the current user and the receiver
         await Message.deleteMany({
             $or: [
-                { senderId: currUser._id, receiverId: receiverObjectId },
-                { senderId: receiverObjectId, receiverId: currUser._id }
+                { senderId: user.userId, receiverId: receiverId },
+                { senderId: receiverId, receiverId: user.userId }
             ]
         });
 
@@ -104,27 +87,4 @@ const clearChat = async (req, res) => {
     }
 };
 
-// search a user
-const searchUser = async (req, res) => {
-    try {
-        const { searchInput } = req.body;
-
-        if(!searchInput) {
-            return res.status(400).json({ error: "Search input is required" });
-        }
-        
-        const users = await User.find({
-            $or: [
-                { username: { $regex: searchInput, $options: "i" } },
-                { email: { $regex: searchInput, $options: "i" } }
-            ],
-        });
-
-        res.status(200).json({users});
-    } catch (error) {
-        console.error("Error in SeachUser controller: ", error.message);
-        res.status(500).json({ error: "Internal server error" });
-    }
-};
-
-module.exports = {getUsers, getMessages, sendMessage, clearChat, searchUser}
+module.exports = {getMessages, sendMessage, clearChat}

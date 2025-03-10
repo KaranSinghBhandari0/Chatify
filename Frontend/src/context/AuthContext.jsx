@@ -1,116 +1,248 @@
-import React, { createContext, useState } from 'react';
+import React, { createContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import {axiosInstance} from '../lib/axios';
 import { io } from "socket.io-client";
+import axios from 'axios';
+
+import { auth, db, googleProvider } from '../firebase/firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+import { setDoc, doc, getDoc, query, where, getDocs, collection } from "firebase/firestore";
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
+    const BASE_URL = import.meta.env.VITE_API_URL;
     const navigate = useNavigate();
-    const BASE_URL = "https://chatifyy.up.railway.app";
-    // const BASE_URL = "http://localhost:3000";
 
-    
-    const [user , setUser] = useState(null);
-    const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+    const [user, setUser] = useState(null);
+    const [checkingAuth, setCheckingAuth] = useState(true);
     const [isSigningUp, setIsSigningUp] = useState(false);
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState([]);
     const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
 
-    const [openForgotPassword, setOpenForgotPassword] = useState(false);
-    const [openOTPModal, setOpenOTPModal] = useState(false);
-    const [openNewPassword, setOpenNewPassword] = useState(false);
-    const [email , setEmail] = useState('');
-
     const [socket, setSocket] = useState(null);
 
-    // check if user is Authenticated
-    const isAuthenticated = async () => {
-        try {
-            const res = await axiosInstance.get("/auth/check");
-            setUser(res.data);
-            connectSocket();
-        } catch(error) {
-            console.log("Error in checkAuth:", error);
-            setUser(null)
-        } finally {
-            setIsCheckingAuth(false);
-        }
-    }
+    // check authentication
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (currentUser) {
+                const userData = await fetchUserById(currentUser.uid);
+                setUser(userData || null);
+            } else {
+                setUser(null);
+            }
+            setCheckingAuth(false);
+        });
+    
+        // Cleanup the listener on unmount
+        return () => unsubscribe();
+    }, []);
 
-    // signup
+    // SignUp function
     const signup = async (formData) => {
-        setIsSigningUp(true);
+        const { email, password, username } = formData;
         try {
-            const res = await axiosInstance.post("/auth/signup", formData);
-            isAuthenticated();
-            setUser(res.data.user);
-            navigate('/');
-            toast.success(res.data.msg);
+            setIsSigningUp(true);
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+            // Create user profile in Firestore
+            const userData = {
+                userId: userCredential.user.uid,
+                email: email,
+                username: username,
+                phoneNumber: "",
+                DOB: "",
+                image: "",
+                accountCreatedAt: userCredential.user.metadata.creationTime,
+            };
+            await addData(userData);
+            setUser(userData);
             connectSocket();
-        } catch(error) {
+            navigate('/profile');
+            toast.success("Signup successful!");
+        } catch (error) {
             console.log(error);
-            toast.error(error.response?.data?.msg || "Signup failed");
-        } finally {            
+            switch (error.code) {
+                case "auth/email-already-in-use":
+                    toast.error("E-mail already in use");
+                    break;
+                case "auth/weak-password":
+                    toast.error("Password should contain at least 6 characters");
+                    break;
+                default:
+                    toast.error("Signup failed. Please try again later.");
+                    break;
+            }
+        } finally {
             setIsSigningUp(false);
         }
-    }
+    };
 
-    // login
+    // login function
     const login = async (formData) => {
-        setIsLoggingIn(true);
+        const { email, password } = formData;
         try {
-            const res = await axiosInstance.post("/auth/login", formData);
-            setUser(res.data.user);
-            toast.success(res.data.msg);
-            navigate('/');
+            setIsLoggingIn(true);
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+            // Fetch user data from Firestore
+            const userData = await fetchUserById(userCredential.user.uid);
+
+            setUser(userData);
             connectSocket();
-        } catch(error) {
+            navigate('/');
+            toast.success("Login successful!");
+        } catch (error) {
             console.log(error);
-            toast.error(error.response?.data?.msg || "Login failed");
-        } finally {            
+            switch (error.code) {
+                case "auth/invalid-credential":
+                    toast.error("Invalid credentials");
+                    break;
+                default:
+                    toast.error("Login failed. Please try again later.");
+                    break;
+            }
+        } finally {
             setIsLoggingIn(false);
         }
-    }
+    };
 
-    // logout
+    // Logout function
     const logout = async () => {
         try {
-            const res = await axiosInstance.get("/auth/logout");
-            toast.success("logout successfull");
-            navigate('/login');
-            disconnectSocket();
-        } catch(error) {
-            console.log(error);
-            toast.error(error.response.data.message);
-        } finally {            
+            await signOut(auth);
             setUser(null);
+            toast.success("Logged out successfully!");
+            disconnectSocket();
+            navigate("/login");
+        } catch (error) {
+            console.log(error);
+            toast.error("Failed to logout. Try again.");
         }
-    }
+    };
 
-    // update Profile
-    const updateProfile = async (data) => {
+    // Google login / signup
+    const googleSignup = async () => {
+        try {
+            const result = await signInWithPopup(auth, googleProvider);
+            const userRef = doc(db, "Chatify", result.user.uid);
+            const userSnap = await getDoc(userRef);
+
+            // User already exists, load their data
+            if(userSnap.exists()) {
+                setUser(userSnap.data())
+            } else {
+                // New user, create a profile
+                const userData = {
+                    userId: result.user.uid,
+                    email: result.user.email,
+                    username: result.user.email,
+                    phoneNumber: "",
+                    DOB: "",
+                    image: "",
+                    accountCreatedAt: result.user.metadata.creationTime,
+                };
+
+                await addData(userData);
+                setUser(userData);
+                connectSocket();
+                setTimeout(() => navigate('/profile'), 100);
+            }
+
+            toast.success("Signup successful!");
+        } catch (error) {
+            console.error("Error during Google Sign-In:", error);
+        }
+    };
+
+    // Add or update user data in Firestore
+    const addData = async (userData) => {
+        try {
+            const userRef = doc(db, "Chatify", userData.userId);
+            await setDoc(userRef, userData, { merge: true });
+        } catch (e) {
+            console.log(error);
+        }
+    };
+
+    // Fetch user data from Firestore
+    const fetchUserById = async (userId) => {
+        try {
+            const userRef = doc(db, "Chatify", userId);
+            const docSnap = await getDoc(userRef);
+
+            if (docSnap.exists()) {
+                return docSnap.data();
+            } else {
+                console.log("No such user found!");
+                return null;
+            }
+        } catch (error) {
+            console.log(error);
+            return null;
+        }
+    };
+
+    // Update user profile in Firestore
+    const updateProfile = async (formData, image) => {
         try {
             setIsUpdatingProfile(true);
-            const res = await axiosInstance.put("/auth/update-profile", data);
-            setUser(res.data.user);
-            toast.success(res.data.msg);
+            if(formData.phoneNumber != 0 && formData.phoneNumber.length != 10) {
+                toast.error('Invalid mobile number');
+                return;
+            }
+
+            const imgUrl = await uploadImage(image);
+
+            const updatedUserData = {
+                userId: user.userId,
+                email: user.email,
+                username: formData.username.trim(),
+                phoneNumber: formData.phoneNumber,
+                image: imgUrl || user.image,
+                accountCreatedAt: user.accountCreatedAt,
+            };
+
+            await addData(updatedUserData);
+
+            setUser(updatedUserData);
+            toast.success("Profile updated successfully!");
         } catch (error) {
-            console.log("error in update profile:", error);
-            toast.error(error.response?.data?.msg || "Profile Update failed");
+            console.log(error);
+            toast.error("Failed to update profile.");
         } finally {
             setIsUpdatingProfile(false);
         }
-    }
+    };
+
+    // upload image to cloudinary
+    const uploadImage = async (image) => {
+        if(!image) return;
+
+        const formData = new FormData();
+        formData.append("file", image);
+        formData.append("upload_preset", import.meta.env.VITE_UPLOAD_PRESET);
+
+        try {
+            console.log('uploading image...');
+            const response = await axios.post(`https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUD_NAME}/image/upload`, formData);
+
+            console.log('image uploaded');
+            return response.data.secure_url;
+        } catch (error) {
+            toast.error('Failed to upload image');
+            console.error(error);
+            return null;
+        }
+    };
 
     // Connect socket
     const connectSocket = () => {
-        if(!user || socket?.connected) return; // Avoid duplicate connections
+        if (!user || socket?.connected) return; // Avoid duplicate connections
 
-        const newSocket = io(BASE_URL, { query: { userId: user._id } } );
+        const newSocket = io(BASE_URL, { query: { userId: user.userId } });
 
         newSocket.connect();
         setSocket(newSocket);
@@ -122,71 +254,65 @@ export const AuthProvider = ({ children }) => {
 
     // Disconnect socket
     const disconnectSocket = () => {
-        if(socket?.connected) {
+        if (socket?.connected) {
             socket.disconnect();
             setSocket(null);
             setOnlineUsers([]);
         }
     };
 
-    // update Profile
-    const updatePassword = async (data) => {
+    // password reset using email
+    const resetPassword = async (email) => {
         try {
-            const res = await axiosInstance.post("/auth/updatePassword", data);
-            toast.success("password Updated");
-        } catch (error) {
-            console.log("error in update profile:", error);
-            toast.error(error.response?.data?.message || "Password Update failed");
-        }
-    }
+            // Check if the user exists in Firestore
+            const user = await getUserByEmail(email);
 
-    // forgot password
-    const forgotPassword = async () => {
-        try {
-            const res = await axiosInstance.post("/auth/send-otp", {email});
-            toast.success(res.data.message);
-            setOpenForgotPassword(false);
-            setOpenOTPModal(true);
-        } catch (error) {
-            console.log("error in sending OTP:", error);
-            toast.error(error.response?.data?.message || "failed to send otp");
-        }
-    }
+            if (!user) {
+                toast.error("No user found with this email.");
+                return;
+            }
 
-    // otp verifying
-    const handleVerifyOTP = async (otp) => {
-        try {
-            const res = await axiosInstance.post("/auth/verify-otp", {otp, email});
-            toast.success(res.data.message);
-            setOpenForgotPassword(false);
-            setOpenOTPModal(false);
-            setOpenNewPassword(true);
+            // If the user exists, send the password reset email
+            await sendPasswordResetEmail(auth, email);
+            toast.success("Password reset email sent! Check your inbox.");
         } catch (error) {
-            console.error("Error in verifying OTP:", error);
-            toast.error(error.response?.data?.message || "Failed to verify OTP");
+            console.error("Error resetting password:", error);
+            if (error.code === "auth/user-not-found") {
+                toast.error("No user found with this email.");
+            } else if (error.code === "auth/invalid-email") {
+                toast.error("Invalid email address.");
+            } else {
+                toast.error("An error occurred. Please try again.");
+            }
         }
     };
 
-    // otp verifying
-    const resetPassword = async (newPassword, confirmNewPassword) => {
+    // Checking for user in Firestore by email
+    const getUserByEmail = async (email) => {
         try {
-            const res = await axiosInstance.post("/auth/resetPassword", {email, newPassword, confirmNewPassword});
-            toast.success(res.data.message);
-            navigate('/login');
+            // Reference to the 'Auth-Portal' collection
+            const usersRef = collection(db, "Chatify");
+            const q = query(usersRef, where("email", "==", email)); // Query to find user by email
+
+            // Execute the query and get the documents
+            const querySnapshot = await getDocs(q);
+
+            // Check if there is at least one matching document
+            if (!querySnapshot.empty) {
+                return querySnapshot.docs[0].data();
+            }
+
+            // If no user found
+            return null;
         } catch (error) {
-            console.error("Error in resetting password:", error);
-            toast.error(error.response?.data?.message || "Failed to reset password");
-        } finally {
-            setOpenForgotPassword(false);
-            setOpenOTPModal(false);
-            setOpenNewPassword(false);
-            setEmail(false);
+            console.error("Error getting user by email:", error);
+            return null;
         }
     };
 
     return (
         <AuthContext.Provider value={{
-            user, isSigningUp, isLoggingIn, isCheckingAuth, isUpdatingProfile, onlineUsers, theme, setTheme, isAuthenticated, signup, login, logout, updateProfile, socket, connectSocket, updatePassword, forgotPassword, handleVerifyOTP, openForgotPassword, setOpenForgotPassword, openOTPModal, setOpenOTPModal, openNewPassword, setOpenNewPassword, email , setEmail, resetPassword
+            user, isSigningUp, isLoggingIn, isUpdatingProfile, onlineUsers, theme, setTheme, signup, login, logout, googleSignup, updateProfile, socket, connectSocket, checkingAuth, uploadImage, resetPassword
         }}>
             {children}
         </AuthContext.Provider>

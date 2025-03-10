@@ -1,6 +1,6 @@
 import axios from "axios";
 
 export const axiosInstance = axios.create({
-    baseURL: "https://chatify-65ur.onrender.com",
+    baseURL: import.meta.env.VITE_API_URL,
     withCredentials: true,
 });

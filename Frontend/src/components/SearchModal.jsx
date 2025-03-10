@@ -4,9 +4,8 @@ import { AuthContext } from '../context/AuthContext';
 import { ChatContext } from '../context/ChatContext';
 
 export default function SearchModal({ searchModal, setSearchModal }) {
-
     const { user } = useContext(AuthContext);
-    const { setSelectedUser, searchUser} = useContext(ChatContext);
+    const { setSelectedUser, searchUser } = useContext(ChatContext);
 
     const [searchInput, setSearchInput] = useState('');
     const [users, setUsers] = useState([]);
@@ -20,18 +19,18 @@ export default function SearchModal({ searchModal, setSearchModal }) {
 
         try {
             const res = await searchUser(searchInput);
-            setUsers(res || []);
+            setUsers(res);
         } catch (err) {
             console.error('Failed to fetch users:', err);
         } finally {
-            setSearchInput('');
             setLoading(false);
             setSubmitted(true);
+            setSearchInput('');
         }
     };
 
-    // exculde curr user
-    const filteredUsers = users.filter((u) => u._id !== user._id);
+    // Exclude current user
+    const filteredUsers = users.filter((u) => u.userId !== user.userId);
 
     return (
         <>
@@ -43,7 +42,10 @@ export default function SearchModal({ searchModal, setSearchModal }) {
                         <button
                             className="absolute top-4 right-4 p-2 rounded-full bg-base-100"
                             aria-label="Close search modal"
-                            onClick={() => {setSearchModal(false), setUsers([])}}
+                            onClick={() => {
+                                setSearchModal(false);
+                                setUsers([]);
+                            }}
                         >
                             <X className="h-5 w-5 text-red-500" />
                         </button>
@@ -53,7 +55,7 @@ export default function SearchModal({ searchModal, setSearchModal }) {
                             Search User
                         </h2>
 
-                        {/* Form */}
+                        {/* Search Form */}
                         <form className="flex flex-col space-y-4" onSubmit={handleSubmit}>
                             <label htmlFor="search-input" className="text-sm text-gray-600">
                                 Enter your friend's username or email
@@ -85,30 +87,34 @@ export default function SearchModal({ searchModal, setSearchModal }) {
 
                         {/* Users List */}
                         {!loading && submitted && users.length > 0 && (
-                            <div className="flex flex-col gap-2 max-h-[300px] overflow-y-scroll">
-                                {filteredUsers.map((user) => (
-                                    <div key={user._id} className="flex gap-2 justify-between border py-2 px-4 rounded">
+                            <div className="flex flex-col gap-2 max-h-[300px] overflow-y-hidden">
+                                {filteredUsers.map((u) => (
+                                    <div key={u.userId} className="flex gap-2 justify-between border py-2 px-4 rounded">
                                         <div className="flex items-center gap-3">
                                             <img
-                                                src={user.image || '/avatar.png'}
-                                                alt={`${user.username}'s avatar`}
+                                                src={u.image || '/avatar.png'}
+                                                alt={`${u.username}'s avatar`}
                                                 className="w-8 h-8 object-cover rounded-full"
                                             />
-                                            <p>{user.username}</p>
+                                            <p>{u.username}</p>
                                         </div>
                                         <button
                                             className="p-2 rounded-full bg-green-500 text-white hover:bg-green-600 transition"
-                                            aria-label={`Add ${user.username}`}
+                                            aria-label={`Chat with ${u.username}`}
+                                            onClick={() => {
+                                                setSelectedUser(u);
+                                                setSearchModal(false);
+                                                setUsers([]);
+                                            }}
                                         >
-                                            <MessageSquare className='h-4 w-4' 
-                                            onClick={() => {setSelectedUser(user) , setSearchModal(false), setUsers([])}} />
+                                            <MessageSquare className='h-4 w-4' />
                                         </button>
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        {/* Empty State Message */}
+                        {/* No Users Found Message */}
                         {!loading && submitted && filteredUsers.length === 0 && (
                             <p className="text-center text-gray-500">No users found.</p>
                         )}

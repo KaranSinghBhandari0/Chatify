@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { LogOut, MessageSquare, Settings, User } from "lucide-react";
 import { useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
+import ThemeToogler from "./ThemeToogler";
 
 export default function Navbar() {
   const { logout, user } = useContext(AuthContext);
@@ -20,16 +21,7 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              to={"/settings"}
-              className={`
-              btn btn-sm gap-2 transition-colors
-              
-              `}
-            >
-              <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Settings</span>
-            </Link>
+            <ThemeToogler/>
 
             {user && (
               <>

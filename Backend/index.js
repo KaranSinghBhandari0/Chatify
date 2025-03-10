@@ -1,10 +1,10 @@
 require('dotenv').config();
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const connectDB = require('./connectDB');
+const connectDB = require('./lib/connectDB');
 const cors = require('cors');
 
-const { app, server } = require('./socket');
+const { app, server } = require('./lib/socket');
 
 app.use(
 	cors({
@@ -27,9 +27,6 @@ server.listen(PORT, () => {
 app.get('/', (req, res) => {
     res.send('this is root');
 });
-
-// auth routes
-app.use("/auth", require('./routes/auth'));
 
 // message routes
 app.use("/messages", require('./routes/message'));
